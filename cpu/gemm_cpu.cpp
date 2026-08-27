@@ -45,7 +45,14 @@ void gemm_cpu_o0(float* A, float* B, float *C, int M, int N, int K) {
 // Your optimized implementations go here
 // note that for o4 you don't have to change the code, but just the compiler flags. So, you can use o3's code for that part
 void gemm_cpu_o1(float* A, float* B, float *C, int M, int N, int K) {
-
+  for (int i = 0; i < M; i++) {
+    for (int k = 0; k < K; k++) {
+      float a_ik = A[i * K + k];
+      for (int j = 0; j < N; j++) {
+        	C[i * N + j]  += a_ik  * B[k * N + j];
+      }
+    }
+  }
 }
 
 void gemm_cpu_o2(float* A, float* B, float *C, int M, int N, int K) {

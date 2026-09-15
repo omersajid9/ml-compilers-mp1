@@ -1,7 +1,9 @@
 #include <chrono>
 #include "../include/utils.h"
+#include <cmath>
 
 #define NUM_RUNS 2
+#define TS 32
 
 #define CHECK(name) \
   std::cout << "checking " << #name << std::endl;		\
@@ -46,14 +48,57 @@ void gemm_cpu_o0(float* A, float* B, float *C, int M, int N, int K) {
 // note that for o4 you don't have to change the code, but just the compiler flags. So, you can use o3's code for that part
 void gemm_cpu_o1(float* A, float* B, float *C, int M, int N, int K) {
 
+  for (int i = 0; i < M; i++) {
+    for (int k = 0; k < K; k++) {
+      float a_ik = A[i * K + k];
+      for (int j = 0; j < N; j++) {
+        	C[i * N + j]  += a_ik  * B[k * N + j];
+      }
+    }
+  }
 }
 
 void gemm_cpu_o2(float* A, float* B, float *C, int M, int N, int K) {
 
+  for (int i = 0; i < M; i++) {
+    for (int kk = 0; kk < K; kk+=TS) {
+      for (int jj = 0; jj < N; jj+=TS) {
+        int k_max = std::min(kk + TS, K);
+        int j_max = std::min(jj + TS, N);
+
+        for (int k = kk; k < k_max; k++) {
+          float a_ik = A[i * K + k];
+          for (int j = jj; j < j_max; j++) {
+            C[i * N + j]  += a_ik  * B[k * N + j];
+          }
+        }
+      }
+    }
+  }
 }
 
 void gemm_cpu_o3(float* A, float* B, float *C, int M, int N, int K) {
 
+  int kk, jj, i, k, j, j_max, k_max;
+  float a_ik;
+  #pragma omp parallel for schedule(static) \
+  private(kk, jj, k, j, j_max, k_max, a_ik) \
+  shared(A, B, C, M, N, K)
+  for (i = 0; i < M; i++) {
+    for (kk = 0; kk < K; kk+=TS) {
+      for (jj = 0; jj < N; jj+=TS) {
+        k_max = std::min(kk + TS, K);
+        j_max = std::min(jj + TS, N);
+
+        for (k = kk; k < k_max; k++) {
+          a_ik = A[i * K + k];
+          for (j = jj; j < j_max; j++) {
+            C[i * N + j]  += a_ik  * B[k * N + j];
+          }
+        }
+      }
+    }
+  }
 }
 
 

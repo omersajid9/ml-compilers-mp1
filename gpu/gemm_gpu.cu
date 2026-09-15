@@ -2,6 +2,8 @@
 #include <cuda_runtime.h>
 
 #define NUM_RUNS 10
+#define TS_A 16
+#define TS_B 32
 
 #define CUDA_CHECK(func)                                                     	   \
 	do {                                                                           \
@@ -104,24 +106,118 @@ void gemm_gpu_o0(float* A, float* B, float* C, int M, int N, int K)
 
 // The scafolding for optimized GEMM implementations
 __global__ void gemm_gpu_o1_kernel(float* A, float* B, float *C, int M, int N, int K) {
+	int j = threadIdx.x + blockIdx.x * blockDim.x;
+	int i = threadIdx.y + blockIdx.y * blockDim.y;
+
+	if (j < N && i < M) {
+		float ans = 0.0;
+		for (int k = 0; k < K; k++) {
+			ans += A[i * K + k]  * B[k * N + j];
+		}
+		C[i * N + j] = ans;
+	}
 }
 void gemm_gpu_o1(float* A, float* B, float* C, int M, int N, int K)
 {
 	// Init block and grid size
+	dim3 blockSize(32, 32);
+	dim3 gridSize(std::ceil((float) N / (float) blockSize.x), std::ceil((float) M / (float) blockSize.y));
+	gemm_gpu_o1_kernel<<<gridSize, blockSize>>>(A, B, C, M, N, K);
+
 }
 
 __global__ void gemm_gpu_o2_kernel(float* A, float* B, float *C, int M, int N, int K) {
+  __shared__ float TILE_A[TS_A][TS_A];
+  __shared__ float TILE_B[TS_A][TS_A];
+
+  int x = threadIdx.x;
+  int y = threadIdx.y;
+
+  int i = threadIdx.y + blockIdx.y * blockDim.y;
+  int j = threadIdx.x + blockIdx.x * blockDim.x;
+
+  float ans = 0.0;
+
+  for (int t = 0; t < (K + TS_A - 1) / TS_A; t++) {
+    if (i < M && (t * TS_A + x) < K) {
+      TILE_A[y][x] = A[i * K + (t * TS_A) + x];
+    } else {
+      TILE_A[y][x] = 0.0f;
+    }
+    if (j < N && (t * TS_A + y) < K) {
+      TILE_B[y][x] = B[(t * TS_A + y) * N + j];
+    } else {
+      TILE_B[y][x] = 0.0f;
+    }
+
+    __syncthreads();
+
+	if (i < M && j < N) {
+		for (int k = 0; k < TS_A; k++) {
+		ans += TILE_A[y][k] * TILE_B[k][x];
+		}
+	}
+    __syncthreads();
+  }
+  if (i < M && j < N) {
+    C[i * N + j] = ans;
+  }
 }
+
 void gemm_gpu_o2(float* A, float* B, float* C, int M, int N, int K)
 {
 	// Init block and grid size
+	dim3 blockSize(TS_A, TS_A);
+	dim3 gridSize(std::ceil((float) N / (float) blockSize.x), std::ceil((float) M / (float) blockSize.y));
+	gemm_gpu_o2_kernel<<<gridSize, blockSize>>>(A, B, C, M, N, K);
+
 }
 
 __global__ void gemm_gpu_o3_kernel(float* A, float* B, float *C, int M, int N, int K) {
+	__shared__ float TILE_A[TS_B][TS_B];
+	__shared__ float TILE_B[TS_B][TS_B];
+
+	int x = threadIdx.x;
+	int y = threadIdx.y;
+
+	int i = threadIdx.y + blockIdx.y * blockDim.y;
+	int j = threadIdx.x + blockIdx.x * blockDim.x;
+
+	float ans = 0.0;
+
+	for (int t = 0; t < (K + TS_B - 1) / TS_B; t++) {
+		if (i < M && (t * TS_B + x) < K) {
+		TILE_A[y][x] = A[i * K + (t * TS_B) + x];
+		} else {
+		TILE_A[y][x] = 0.0f;
+		}
+		if (j < N && (t * TS_B + y) < K) {
+		TILE_B[y][x] = B[(t * TS_B + y) * N + j];
+		} else {
+		TILE_B[y][x] = 0.0f;
+		}
+
+		__syncthreads();
+
+		if (i < M && j < N) {
+			for (int k = 0; k < TS_B; k++) {
+			ans += TILE_A[y][k] * TILE_B[k][x];
+			}
+		}
+		__syncthreads();
+	}
+	if (i < M && j < N) {
+		C[i * N + j] = ans;
+	}
 }
+
 void gemm_gpu_o3(float* A, float* B, float* C, int M, int N, int K)
 {
 	// Init block and grid size
+	dim3 blockSize(TS_B, TS_B);
+	dim3 gridSize(std::ceil((float) N / (float) blockSize.x), std::ceil((float) M / (float) blockSize.y));
+	gemm_gpu_o3_kernel<<<gridSize, blockSize>>>(A, B, C, M, N, K);
+
 }
 
 

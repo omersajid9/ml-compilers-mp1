@@ -1,0 +1,8 @@
+gemm_gpu_o0,100,381.726
+gemm_gpu_o1,100,0.28512
+gemm_gpu_o2,100,0.1784
+gemm_gpu_o3,100,0.243808
+gemm_gpu_o0,1000,1.496e+06
+gemm_gpu_o1,1000,39.5364
+gemm_gpu_o2,1000,34.62
+gemm_gpu_o3,1000,27.2463

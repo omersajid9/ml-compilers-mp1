@@ -1,9 +1,12 @@
 #include <chrono>
 #include "../include/utils.h"
 #include <cmath>
+#include <fstream>
+
+static std::ofstream csv("ablation_cpu.csv", std::ios_base::app);
 
 #define NUM_RUNS 2
-#define TS 32
+#define TS 64
 
 #define CHECK(name) \
   std::cout << "checking " << #name << std::endl;		\
@@ -28,7 +31,8 @@
       time_ ## name += end_time_ ## name - start_time_ ## name;		\
     }									\
 std::chrono::duration<double, std::milli> duration_ ## name = time_ ## name/float(NUM_RUNS); \
-  std::cout << "Time taken for GEMM (CPU," << #name <<"): " << duration_ ## name.count() << "ms" << std::endl; 
+  std::cout << "Time taken for GEMM (CPU," << #name <<"): " << duration_ ## name.count() << "ms" << std::endl; \
+  csv << #name << "," << K << "," << duration_ ## name.count() << "\n";
 
 
 // reference CPU implementation of the GEMM kernel
@@ -76,6 +80,9 @@ void gemm_cpu_o2(float* A, float* B, float *C, int M, int N, int K) {
   }
 }
 
+#pragma GCC push_options
+#pragma GCC optimize ("O3")
+#pragma GCC target ("avx2")
 void gemm_cpu_o3(float* A, float* B, float *C, int M, int N, int K) {
 
   int kk, jj, i, k, j, j_max, k_max;
@@ -99,7 +106,35 @@ void gemm_cpu_o3(float* A, float* B, float *C, int M, int N, int K) {
     }
   }
 }
+#pragma GCC pop_options
 
+#pragma GCC push_options
+#pragma GCC optimize ("O3")
+#pragma GCC target ("avx2,fma")
+void gemm_cpu_o4(float* A, float* B, float *C, int M, int N, int K) {
+
+  int kk, jj, i, k, j, j_max, k_max;
+  float a_ik;
+  #pragma omp parallel for schedule(static) \
+  private(kk, jj, k, j, j_max, k_max, a_ik) \
+  shared(A, B, C, M, N, K)
+  for (i = 0; i < M; i++) {
+    for (kk = 0; kk < K; kk+=TS) {
+      for (jj = 0; jj < N; jj+=TS) {
+        k_max = std::min(kk + TS, K);
+        j_max = std::min(jj + TS, N);
+
+        for (k = kk; k < k_max; k++) {
+          a_ik = A[i * K + k];
+          for (j = jj; j < j_max; j++) {
+            C[i * N + j]  += a_ik  * B[k * N + j];
+          }
+        }
+      }
+    }
+  }
+}
+#pragma GCC pop_options
 
 int main(int argc, char* argv[]) {
 	if (argc < 3) {
@@ -129,12 +164,14 @@ int main(int argc, char* argv[]) {
 	CHECK(gemm_cpu_o1)
 	CHECK(gemm_cpu_o2)
 	CHECK(gemm_cpu_o3)
+	CHECK(gemm_cpu_o4)
 	delete[] refC;
 	
 	TIME(gemm_cpu_o0)
 	TIME(gemm_cpu_o1)
 	TIME(gemm_cpu_o2)
 	TIME(gemm_cpu_o3)
+	TIME(gemm_cpu_o4)
 
 	delete[] A;
 	delete[] B;

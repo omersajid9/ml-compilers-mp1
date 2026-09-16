@@ -1,5 +1,18 @@
 #include "../include/utils.h"
 #include <cuda_runtime.h>
+#include <cublas_v2.h>
+#include <fstream>
+
+static std::ofstream csv("ablation_gpu.csv", std::ios_base::app);
+
+#define CUBLAS_CHECK(func) \
+	do { \
+		cublasStatus_t status = (func); \
+		if (status != CUBLAS_STATUS_SUCCESS) { \
+			printf("cuBLAS API failed at line %d with error: %d\n", __LINE__, status); \
+			exit(EXIT_FAILURE); \
+		} \
+	} while (0)
 
 #define NUM_RUNS 10
 #define TS_A 16
@@ -80,6 +93,7 @@
 	} \
 	cudaMemcpy(C, d_C_ ## name, M * N * sizeof(float), cudaMemcpyDeviceToHost); \
 	std::cout << "Time taken for GEMM (GPU, " << #name <<"): " << milliseconds_ ## name / (float)NUM_RUNS << "ms" << std::endl; \
+  csv << #name << "," << K << "," << milliseconds_ ## name << "\n"; \
 	cudaFree(d_A_ ## name); \
 	cudaFree(d_B_ ## name); \
 	cudaFree(d_C_ ## name);
@@ -221,6 +235,24 @@ void gemm_gpu_o3(float* A, float* B, float* C, int M, int N, int K)
 }
 
 
+static cublasHandle_t g_cublas_handle = nullptr;
+void gemm_gpu_cublas(float* A, float* B, float* C, int M, int N, int K)
+{
+	if (g_cublas_handle == nullptr) {
+		CUBLAS_CHECK(cublasCreate(&g_cublas_handle));
+	}
+	const float alpha = 1.0f;
+	const float beta = 0.0f;
+	CUBLAS_CHECK(cublasSgemm(
+		g_cublas_handle,
+		CUBLAS_OP_N, CUBLAS_OP_N,
+		N, M, K,
+		&alpha,
+		B, N,
+		A, K,
+		&beta,
+		C, N));
+}
 
 int main(int argc, char* argv[]) {
 	if (argc < 3) {
@@ -248,12 +280,18 @@ int main(int argc, char* argv[]) {
 	CHECK(gemm_gpu_o1)
 	CHECK(gemm_gpu_o2)
 	CHECK(gemm_gpu_o3)
+	CHECK(gemm_gpu_cublas)
 
 	// Actual run
  	TIME(gemm_gpu_o0)
 	TIME(gemm_gpu_o1)
 	TIME(gemm_gpu_o2)
 	TIME(gemm_gpu_o3)
+	TIME(gemm_gpu_cublas)
+
+	if (g_cublas_handle != nullptr) {
+		cublasDestroy(g_cublas_handle);
+	}
 
 	cudaFreeHost(A);
 	cudaFreeHost(B);

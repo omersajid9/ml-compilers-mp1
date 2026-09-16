@@ -1,0 +1,10 @@
+gemm_cpu_o0,100,6.49454
+gemm_cpu_o1,100,5.22127
+gemm_cpu_o2,100,5.20292
+gemm_cpu_o3,100,0.197887
+gemm_cpu_o4,100,0.182053
+gemm_cpu_o0,1000,6311
+gemm_cpu_o1,1000,4007.69
+gemm_cpu_o2,1000,4334.51
+gemm_cpu_o3,1000,266.371
+gemm_cpu_o4,1000,228.292
